@@ -1,0 +1,152 @@
+import React, { useEffect, useState } from "react";
+import HOC from "../../components/HOC/HOC";
+
+import { Link, useNavigate } from "react-router-dom";
+import { FaPlus } from "react-icons/fa6";
+import { IoSearch } from "react-icons/io5";
+import { MdArrowOutward } from "react-icons/md";
+import { FiEdit3 } from "react-icons/fi";
+import { AiOutlineDelete } from "react-icons/ai";
+import Pagination from "../../components/Pagination/Pagination";
+import {
+  deleteTestSeries,
+  deleteTopic,
+  getAllTestSeries,
+  getAllTopics,
+} from "../../services/exportFunctions";
+import { deleteRequest } from "../../services/apiService";
+
+const TestSeriesData = () => {
+  const navigate=useNavigate();
+
+  const [isLoading, setIsLoading] = useState(false);
+  const [data, setData] = useState([]);
+
+  const [currentPage, setCurrentPage] = useState(1);
+  const [limit, setLimit] = useState(10);
+  const [search, setSearch] = useState("");
+
+  const handlePageChange = (page) => {
+    setCurrentPage(page);
+  };
+
+  const handleLimitChange = (newLimit) => {
+    console.log("Limit per Page:", newLimit);
+    setLimit(newLimit);
+  };
+  const getData = () => {
+    const params = {
+      page: currentPage,
+      limit: limit,
+      search,
+    };
+    getAllTestSeries({ setIsLoading, setData, params });
+  };
+  useEffect(() => {
+    getData();
+  }, [limit, currentPage, search]);
+
+  return (
+    <>
+      <div className="dashboardcontainer">
+        <div className="dashboardcontainer-header">
+          <h6>Test Series</h6>
+        </div>
+        <div className="handwrittennotes-list">
+          <div className="handwrittennotes-list-header">
+            <Link to={"/quizapp/add-test-series"} className="link">
+              <div className="handwrittennotes-add">
+                <FaPlus />
+                <h6>Add Test Series</h6>
+              </div>
+            </Link>
+            <div className="handwrittennotes-search">
+              <IoSearch color="#ADB5BD" />
+              <input
+                type="search"
+                placeholder="Search..."
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+            {/* <div className="handwrittennotes-export">
+              <span>Export CSV</span>
+            </div> */}
+          </div>
+          <div className="handwrittennotes-list-table">
+            <table>
+              <thead>
+                <tr>
+                  <th>Goal Category</th>
+                  <th>Goal Exam</th>
+                  <th>Bundle Name</th>
+                  <th>Bundle Description</th>
+                  <th>Tile Image</th>
+                  <th>Test Count</th>
+
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {data?.data?.map((data, index) => (
+                  <tr key={index}>
+                    <td>{data.goalCategory?.name}</td>
+                    <td>{data.goal?.name}</td>
+                    <td>{data?.bundleName}</td>
+                    <td>{data?.bundleDescription}</td>
+                    <td>
+                      {data?.tileImage ? (
+                        <img
+                          style={{
+                            width: "190px",
+                            height: "120px",
+                          }}
+                          src={data?.tileImage}
+                          alt="tileImage"
+                        />
+                      ) : (
+                        "No Image"
+                      )}
+                    </td>
+                    <td>{data.testCount}</td>
+
+                    <td>
+                      <div className="handwrittennotes-table-icons">
+                        <div className="handwrittennotes-icon">
+                          <MdArrowOutward />
+                        </div>
+                        <div className="handwrittennotes-icon">
+                          <FiEdit3
+                            onClick={() =>
+                              navigate(`/quizapp/edit-test-series/${data._id}`)
+                            }
+                          />
+                        </div>
+                        <div className="handwrittennotes-icon">
+                          <AiOutlineDelete
+                            onClick={() =>
+                              deleteTestSeries({
+                                id: data._id,
+                                addFun: getData,
+                              })
+                            }
+                          />
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <Pagination
+              totalPages={data?.pagination?.totalPages}
+              onPageChange={handlePageChange}
+              onLimitChange={handleLimitChange}
+            />
+          </div>
+        </div>
+      </div>
+    </>
+  );
+};
+
+export default HOC(TestSeriesData);

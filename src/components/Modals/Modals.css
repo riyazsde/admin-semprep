@@ -1,0 +1,258 @@
+.createpost-main-modal {
+    display: flex;
+    align-items: center;
+    gap: 2rem;
+}
+
+
+.createpost-input {
+    flex: 1;
+}
+
+
+.createpost-input-bottom {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 2rem;
+}
+
+
+.createpost-button-modal {
+    margin-top: 5rem;
+}
+
+
+
+.preview-container-modal {}
+
+
+.preview-modal-div {
+    width: auto;
+    height: auto;
+    border-radius: 10px;
+    border: 1px solid #A3A3A3;
+    display: flex;
+    padding: 0.8rem;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.preview-modal-div-img {
+    width: 177px;
+    height: auto;
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.preview-modal-div-img img {
+    width: 100%;
+    height: 100%;
+    border-radius: 10px;
+    object-fit: cover;
+}
+
+.preview-modal-div-right {
+    flex: 1;
+}
+
+.preview-modal-div-heading {}
+
+.preview-modal-div-heading h1 {
+    font-weight: 600;
+    font-size: 16px;
+    line-height: 24px;
+    color: #000000;
+    margin: 0;
+}
+
+.preview-modal-div-heading h6 {
+    font-weight: 400;
+    font-size: 15px;
+    line-height: 22.5px;
+    color: #3E3E45;
+    margin: 0;
+}
+
+.preview-modal-div-content {
+    margin-top: 1rem;
+}
+
+.preview-modal-div-content p {
+    font-weight: 400;
+    font-size: 12px;
+    line-height: 18.5px;
+    color: #3E3E45;
+    margin: 0;
+}
+
+.preview-modal-div-readmore {
+    display: flex;
+    align-items: center;
+    justify-content: end;
+    gap: 0.5rem;
+    cursor: pointer;
+    margin-top: 0.5rem;
+}
+
+.preview-modal-div-readmore span {
+    font-weight: 600;
+    font-size: 16px;
+    line-height: 24px;
+    color: #6090F7;
+    margin: 0;
+}
+
+.preview-modal-div-readmore svg {
+    font-size: 20px;
+    color: #6090F7;
+}
+
+
+.preview-modal-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+
+
+
+.questions-container-modal {}
+
+.questions-modal-heading {}
+
+.questions-modal-heading h6 {
+    font-weight: 600;
+    font-size: 16px;
+    line-height: 24px;
+    color: #000000;
+    margin: 0;
+}
+
+.questions-modal-main {
+    margin-top: 2rem;
+}
+
+.questions-modal-div {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+}
+
+.questions-modal-div-left {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.questions-modal-div-left h4 {
+    font-weight: 600;
+    font-size: 16px;
+    line-height: 24px;
+    color: #000000;
+    margin: 0;
+}
+
+.questions-modal-left-count {
+    width: 98px;
+    height: 98px;
+    border-radius: 10px;
+    border: 1px solid #D9D9D9;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.questions-modal-left-count h6 {
+    font-weight: 600;
+    font-size: 32px;
+    line-height: 48px;
+    color: #B3DEF7;
+    margin: 0;
+}
+
+
+.questions-modal-div-right {
+    width: auto;
+    height: auto;
+    padding: 7px 20px 7px 20px;
+    border-radius: 10px;
+    background: #6090F7;
+    cursor: pointer;
+}
+
+.questions-modal-div-right p {
+    font-weight: 600;
+    font-size: 16px;
+    line-height: 24px;
+    color: #FFFFFF;
+    margin: 0;
+}
+
+
+
+.addgoals-modal-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 2rem;
+}
+
+
+
+.videolink {
+    font-weight: 400;
+    font-size: 14px;
+    line-height: 24px;
+    color: #343A40;
+    margin: 0;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+
+
+
+.table-modal {
+    width: auto;
+    height: auto;
+    border-radius: 8px;
+    background: #FFFFFF;
+}
+
+
+.table-modal table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.table-modal table thead th {
+    font-weight: 400;
+    font-size: 14px;
+    line-height: 20px;
+    color: #6C757D;
+    margin: 0;
+    padding: 8px 24px;
+    border-right: 1px solid #E9ECEF;
+    border-bottom: 1px solid #E9ECEF;
+    text-align: left;
+}
+
+.table-modal table tbody td {
+    min-height: 56px;
+    padding: 8px 48px 8px 24px;
+    border-right: 1px solid #E9ECEF;
+    border-bottom: 1px solid #E9ECEF;
+    font-weight: 400;
+    font-size: 14px;
+    line-height: 24px;
+    color: #6C757D;
+    margin: 0;
+    text-align: left;
+}
+
+.table-modal table tbody tr:nth-child(odd) td {
+    background: #F8F9FA;
+}

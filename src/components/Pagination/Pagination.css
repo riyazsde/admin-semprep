@@ -1,0 +1,119 @@
+.paginationcontainer {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    margin-top: 1rem;
+}
+
+.pagination-div-disable {
+    width: auto;
+    height: auto;
+    border-radius: 8px;
+    padding: 8px 12px;
+    background: #E9ECEF;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: not-allowed;
+}
+
+.pagination-div-active {
+    border-radius: 8px;
+    border: 1px solid #8BA3CB;
+    background: #FFFFFF;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 12px;
+}
+
+.pagination-div {
+    border-radius: 8px;
+    border: 1px solid #CED4DA;
+    background: #FFFFFF;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 12px;
+    cursor: pointer;
+}
+
+.pagination-div-ellipsis {
+    border: none;
+    background: transparent;
+    cursor: default;
+    padding: 8px 12px;
+}
+
+.pagination-div-limit {
+    display: flex;
+    align-items: center;    
+    gap: 0.3rem;
+}
+
+.pagination-div-limit select {
+    padding: 10px;
+    padding-right: 2rem;
+    border-radius: 8px;
+    border: 1px solid #CED4DA;
+    outline: none;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .paginationcontainer {
+        gap: 0.3rem;
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+
+    .pagination-div-disable {
+        padding: 6px 10px;
+    }
+
+    .pagination-div-active {
+        padding: 6px 10px;
+    }
+
+    .pagination-div {
+        padding: 6px 10px;
+    }
+
+    .pagination-div-ellipsis {
+        padding: 6px 10px;
+    }
+
+    .pagination-div-limit select {
+        padding: 8px;
+        padding-right: 1.5rem;
+    }
+}
+
+@media (max-width: 480px) {
+   
+
+    .pagination-div-disable {
+        padding: 4px 8px;
+    }
+
+    .pagination-div-active {
+        padding: 4px 8px;
+    }
+
+    .pagination-div {
+        padding: 4px 8px;
+    }
+
+    .pagination-div-ellipsis {
+        padding: 4px 8px;
+    }
+
+    .pagination-div-limit {
+        margin-top: 0.5rem;
+    }
+
+    .pagination-div-limit select {
+        padding: 6px;
+        padding-right: 1rem;
+    }
+}

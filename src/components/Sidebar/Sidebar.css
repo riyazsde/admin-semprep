@@ -1,0 +1,149 @@
+.sidebarcontainer {
+    width: auto;
+    height: 100vh;
+    background: #FFFFFF;
+    border-right: 1px solid #EDEEF3;
+    border-bottom: 1px solid #EDEEF3;
+    padding: 1rem;
+
+}
+
+
+
+
+
+
+.side-logo {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    /* border: 1px solid red; */
+}
+
+.side-logo h6 {
+    font-weight: 700;
+    font-size: 16px;
+    line-height: 24px;
+    color: #000000;
+    margin: 0;
+}
+
+
+
+.sideitems {
+    padding: 0;
+    margin-top: 1.5rem;
+    height: 80vh;
+    overflow-y: scroll;
+    overflow-x: hidden;
+
+}
+
+.sideitems::-webkit-scrollbar {
+    width: 1px;
+    height: 60px;
+}
+
+
+
+
+.sideitemactive {
+    width: auto;
+    height: auto;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    border-radius: 12px;
+    padding: 12px 16px 12px 16px;
+    text-decoration: none;
+    border: 2px solid #608FF7;
+    margin-top: 0.5rem;
+}
+
+.sideitemactive:hover{
+    text-decoration: none;
+}
+
+
+.sideitemactive svg {
+    color: #608FF7;
+    font-size: 20px;
+}
+
+.sideitemactive p {
+    font-weight: 600;
+    font-size: 14px;
+    line-height: 16.94px;
+    color: #608FF7;
+    margin: 0;
+    cursor: pointer;
+}
+
+
+.sideitem {
+    width: auto;
+    height: auto;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    border-radius: 12px;
+    padding: 12px 16px 12px 16px;
+    text-decoration: none;
+    margin-top: 0.5rem;
+    height: 48px;
+    transition: all 0.3s ease;
+    border: 2px solid transparent;
+}
+
+.sideitem svg {
+    color: #0A1B39;
+    font-size: 20px;
+    transition: color 0.3s ease;
+}
+
+.sideitem p {
+    font-weight: 500;
+    font-size: 14px;
+    line-height: 16.94px;
+    color: #0A1B39;
+    margin: 0;
+    cursor: pointer;
+    transition: color 0.3s ease;
+}
+
+
+/* Hover State */
+.sideitem:hover {
+    border: 2px solid #608FF7;
+    text-decoration: none;
+}
+
+.sideitem:hover svg,
+.sideitem:hover p {
+    color: #608FF7;
+}
+
+.sidelogoutbtn {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 2rem;
+    padding: 12px 16px 12px 16px;
+}
+
+.sidelogoutbtn p{
+    font-weight: 500;
+    font-size: 14px;
+    line-height: 16.94px;
+    color: #0A1B39;
+    margin: 0;
+    cursor: pointer;
+}
+
+
+.sidelogoutbtn svg{
+    color: #0A1B39;
+    font-size: 20px;
+}
