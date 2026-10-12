@@ -3,7 +3,7 @@ import HOC from "../../components/HOC/HOC";
 
 import { GoArrowLeft } from "react-icons/go";
 import { useNavigate, useParams } from "react-router-dom";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { FiUpload, FiTrash2, FiFileText, FiX } from "react-icons/fi";
 import { toast } from "sonner";
 import {
@@ -25,7 +25,7 @@ import {
 import HandwrittenNotesFormComponent from "../../services/HandwrittenNotesFormComponent";
 
 // ─────────────────────────────────────────────────────────────
-// Helper — extract array from any response shape
+// Helpers
 // ─────────────────────────────────────────────────────────────
 const extractList = (res) => {
   if (!res) return [];
@@ -33,19 +33,43 @@ const extractList = (res) => {
   if (Array.isArray(res.data)) return res.data;
   if (Array.isArray(res.data?.data)) return res.data.data;
   if (Array.isArray(res.data?.result)) return res.data.result;
+  if (Array.isArray(res.data?.docs)) return res.data.docs;
   if (Array.isArray(res.result)) return res.result;
   return [];
 };
 
-// Normalize a value that might be a string ID or a populated object
 const asId = (val) =>
   typeof val === "object" && val !== null ? val?._id : val;
+
+/**
+ * Resolve the semester ID for a note.
+ * 1. Top-level `note.semester` (if the backend ever starts returning it)
+ * 2. `note.subjects[].subject.semester` (what your API actually sends today)
+ * 3. `note.subjects[].semester` (looser fallback)
+ */
+const deriveSemesterId = (note) => {
+  if (!note) return "";
+
+  // 1️⃣ Top-level
+  const top = asId(note.semester);
+  if (top) return top;
+
+  // 2️⃣ Nested inside subjects
+  if (Array.isArray(note.subjects)) {
+    for (const s of note.subjects) {
+      const nested = asId(s?.subject?.semester) || asId(s?.semester);
+      if (nested) return nested;
+    }
+  }
+
+  return "";
+};
 
 const EditHandwrittenNotes = () => {
   const navigate = useNavigate();
   const { id } = useParams();
 
-  const { register, handleSubmit, watch, reset } = useForm();
+  const { register, handleSubmit, watch, reset, setValue, control } = useForm();
 
   // ─── State ─────────────────────────────────────────────────
   const [data, setData] = useState([]);
@@ -62,6 +86,14 @@ const EditHandwrittenNotes = () => {
   const [formSubjects, setFormSubjects] = useState([]);
   const [semesters, setSemesters] = useState([]);
 
+  // ─── Edit hydration ────────────────────────────────────────
+  const [noteData, setNoteData] = useState(null);
+  const [categoryLoaded, setCategoryLoaded] = useState(false);
+
+  const [injectedCategory, setInjectedCategory] = useState(false);
+  const [injectedGoal, setInjectedGoal] = useState(false);
+  const [injectedSemester, setInjectedSemester] = useState(false);
+
   // ─── PDF state ─────────────────────────────────────────────
   const [existingPdfs, setExistingPdfs] = useState([]);
   const [newPdfFiles, setNewPdfFiles] = useState([]);
@@ -70,53 +102,156 @@ const EditHandwrittenNotes = () => {
 
   const fileInputRef = useRef(null);
 
-  // ─── Initial data load ─────────────────────────────────────
+  const categoryList = extractList(data);
+  const goalList = extractList(allGoals);
+
+  // ─── Watch fields ──────────────────────────────────────────
+  const goalCategory = watch("goalCategory");
+  const goalExamIdRaw = watch("goal");
+  const goalExamId = asId(goalExamIdRaw);
+  const subjectId = asId(watch("subject"));
+  const subSubjectId = asId(watch("subSubject"));
+  const chapterId = asId(watch("chapter"));
+  const topicId = asId(watch("topic"));
+
+  // ─── Initial load ──────────────────────────────────────────
   useEffect(() => {
+    let cancelled = false;
+
     getStudyPlannerPlans({ setIsLoading, setData: setStudyplannerStudyPlans });
+
+    getGoalCategory({
+      setIsLoading,
+      setData: (res) => {
+        if (cancelled) return;
+        setData(res);
+        setCategoryLoaded(true);
+      },
+    });
 
     getHandwrittenNoteById({
       id,
       setIsLoading,
       setData: (res) => {
-        const noteData = res?.data || {};
+        if (cancelled) return;
+        const nd = res?.data || res;
 
-        // Normalize populated objects → string IDs for the form
-        reset({
-          ...noteData,
-          goalCategory: asId(noteData?.goalCategory),
-          goal: asId(noteData?.goal),
-          semester: asId(noteData?.semester),
-        });
+        const derivedSemesterId = deriveSemesterId(nd);
 
-        if (noteData?.subjects) setFormSubjects(noteData.subjects);
-        if (noteData?.handWrittenNotesPdf)
-          setExistingPdfs(noteData.handWrittenNotesPdf);
+        console.log("📥 FULL NOTE:", nd);
+        console.log(
+          "📥 semester top-level:",
+          nd?.semester,
+          "| derived:",
+          derivedSemesterId
+        );
+
+        const hydrated = {
+          ...nd,
+          semester: derivedSemesterId || "",
+        };
+
+        setNoteData(hydrated);
+        if (nd?.subjects) setFormSubjects(nd.subjects);
+        if (nd?.handWrittenNotesPdf)
+          setExistingPdfs(nd.handWrittenNotesPdf);
       },
     });
 
-    getGoalCategory({ setIsLoading, setData });
-  }, [id, reset]);
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
 
-  // ─── Dependent dropdowns ───────────────────────────────────
-  const goalCategory = watch("goalCategory");
-
+  // ─── Reset form once data is ready ─────────────────────────
   useEffect(() => {
-    if (goalCategory) {
-      const params = {
-        page: 1,
-        limit: 100,
-        search: "",
-        goalCategoryId: goalCategory,
-      };
-      getGoalExamByGoalCategory({ setIsLoading, setData: setAllGoals, params });
+    if (!noteData || !categoryLoaded) return;
+
+    reset({
+      ...noteData,
+      goalCategory: asId(noteData?.goalCategory),
+      goal: asId(noteData?.goal),
+      semester: asId(noteData?.semester),
+      subject: asId(noteData?.subject),
+      subSubject: asId(noteData?.subSubject),
+      chapter: asId(noteData?.chapter),
+      topic: asId(noteData?.topic),
+    });
+  }, [noteData, categoryLoaded, reset]);
+
+  // ─── Inject saved Goal Category ────────────────────────────
+  useEffect(() => {
+    if (!noteData || injectedCategory) return;
+    if (!categoryLoaded) return;
+
+    const savedCatId = asId(noteData.goalCategory);
+    if (!savedCatId) {
+      setInjectedCategory(true);
+      return;
     }
+
+    const exists = categoryList.some((c) => asId(c) === savedCatId);
+    if (!exists) {
+      const fallback =
+        typeof noteData.goalCategory === "object" &&
+        noteData.goalCategory !== null
+          ? noteData.goalCategory
+          : { _id: savedCatId, name: `Category ${savedCatId.slice(-4)}` };
+      setData((prev) => {
+        const list = extractList(prev);
+        if (list.some((c) => asId(c) === savedCatId)) return prev;
+        return [...list, fallback];
+      });
+    }
+    setInjectedCategory(true);
+  }, [noteData, categoryLoaded, categoryList, injectedCategory]);
+
+  // ─── Fetch goals when category set ─────────────────────────
+  useEffect(() => {
+    if (!goalCategory) return;
+
+    const params = {
+      page: 1,
+      limit: 100,
+      search: "",
+      goalCategoryId: goalCategory,
+    };
+
+    getGoalExamByGoalCategory({
+      setIsLoading,
+      setData: (res) => setAllGoals(res),
+      params,
+    });
   }, [goalCategory]);
 
-  // Normalize goalExamId (may be string or populated object)
-  const goalExamIdRaw = watch("goal");
-  const goalExamId = asId(goalExamIdRaw);
+  // ─── Inject saved Goal Exam ────────────────────────────────
+  useEffect(() => {
+    if (!noteData || injectedGoal) return;
+    if (!goalCategory) return;
+    if (!goalList.length && !allGoals.length) return;
 
-  // ─── Semesters (client-side filtered by goal) ──────────────
+    const savedGoalId = asId(noteData.goal);
+    if (!savedGoalId) {
+      setInjectedGoal(true);
+      return;
+    }
+
+    const exists = goalList.some((g) => asId(g) === savedGoalId);
+    if (!exists) {
+      const fallback =
+        typeof noteData.goal === "object" && noteData.goal !== null
+          ? noteData.goal
+          : { _id: savedGoalId, name: `Goal ${savedGoalId.slice(-4)}` };
+      setAllGoals((prev) => {
+        const list = extractList(prev);
+        if (list.some((g) => asId(g) === savedGoalId)) return prev;
+        return [...list, fallback];
+      });
+    }
+    setInjectedGoal(true);
+  }, [noteData, goalCategory, goalList, allGoals, injectedGoal]);
+
+  // ─── Fetch semesters when goal set ─────────────────────────
   useEffect(() => {
     if (!goalExamId) {
       setSemesters([]);
@@ -134,18 +269,94 @@ const EditHandwrittenNotes = () => {
       setIsLoading,
       setData: (res) => {
         const list = extractList(res);
-
-        // Backend may return all semesters — filter client-side
-        const filtered = list.filter((sem) => {
-          const semGoalId = asId(sem?.goal);
-          return String(semGoalId) === String(goalExamId);
-        });
-
-        setSemesters(filtered);
+        console.log("📥 SEMESTERS fetched:", list);
+        setSemesters(list);
       },
       params,
     });
   }, [goalExamId]);
+
+  // ─── Inject saved Semester if not present in fetched list ──
+  useEffect(() => {
+    if (!noteData || injectedSemester) return;
+    if (!goalExamId) return;
+    if (!semesters.length) return;
+
+    const savedSemId = asId(noteData.semester);
+    if (!savedSemId) {
+      setInjectedSemester(true);
+      return;
+    }
+
+    const exists = semesters.some((s) => asId(s) === savedSemId);
+    if (!exists) {
+      const fallback =
+        typeof noteData.semester === "object" && noteData.semester !== null
+          ? noteData.semester
+          : {
+              _id: savedSemId,
+              semesterNumber: "?",
+              durationYears: "",
+            };
+      setSemesters((prev) => {
+        if (prev.some((s) => asId(s) === savedSemId)) return prev;
+        return [...prev, fallback];
+      });
+    }
+    setInjectedSemester(true);
+  }, [noteData, goalExamId, semesters, injectedSemester]);
+
+  // ─── Reconciliation: re-apply values once options exist ────
+  // Goal Category
+  useEffect(() => {
+    if (!noteData) return;
+    const savedCat = asId(noteData.goalCategory);
+    if (!savedCat) return;
+    if (!categoryList.some((c) => asId(c) === savedCat)) return;
+    if (watch("goalCategory") === savedCat) return;
+
+    const t = setTimeout(() => {
+      setValue("goalCategory", savedCat, {
+        shouldDirty: false,
+        shouldValidate: false,
+      });
+    }, 0);
+    return () => clearTimeout(t);
+  }, [noteData, categoryList, setValue, watch]);
+
+  // Goal Exam
+  useEffect(() => {
+    if (!noteData) return;
+    const savedGoal = asId(noteData.goal);
+    if (!savedGoal) return;
+    if (!goalList.some((g) => asId(g) === savedGoal)) return;
+    if (watch("goal") === savedGoal) return;
+
+    const t = setTimeout(() => {
+      setValue("goal", savedGoal, {
+        shouldDirty: false,
+        shouldValidate: false,
+      });
+    }, 0);
+    return () => clearTimeout(t);
+  }, [noteData, goalList, setValue, watch]);
+
+  // Semester — final safety net
+  useEffect(() => {
+    if (!noteData) return;
+    const savedSem = asId(noteData.semester);
+    if (!savedSem) return;
+    if (!semesters.some((s) => asId(s) === savedSem)) return;
+    if (watch("semester") === savedSem) return;
+
+    const t = setTimeout(() => {
+      setValue("semester", savedSem, {
+        shouldDirty: false,
+        shouldValidate: false,
+      });
+    }, 0);
+    return () => clearTimeout(t);
+  }, [noteData, semesters, setValue, watch]);
 
   // ─── Subjects ──────────────────────────────────────────────
   useEffect(() => {
@@ -161,16 +372,12 @@ const EditHandwrittenNotes = () => {
     }
   }, [goalExamId, goalCategory]);
 
-  const subjectId = asId(watch("subject"));
-
   useEffect(() => {
     if (subjectId) {
       const params = { page: 1, limit: 100, search: "", subjectId };
       getAllSubSubjects({ setIsLoading, setData: setSubSubjects, params });
     }
   }, [subjectId]);
-
-  const subSubjectId = asId(watch("subSubject"));
 
   useEffect(() => {
     if (subjectId || subSubjectId) {
@@ -181,16 +388,12 @@ const EditHandwrittenNotes = () => {
     }
   }, [subjectId, subSubjectId]);
 
-  const chapterId = asId(watch("chapter"));
-
   useEffect(() => {
     if (chapterId) {
       const params = { page: 1, limit: 100, search: "", chapterId };
       getTopicsByChapter({ setIsLoading, setData: setTopics, params });
     }
   }, [chapterId]);
-
-  const topicId = asId(watch("topic"));
 
   useEffect(() => {
     if (topicId) {
@@ -282,12 +485,32 @@ const EditHandwrittenNotes = () => {
 
       const finalPdfs = [...existingUrls, ...uploadedUrls];
 
+      const semesterId = asId(formData.semester);
+
+      // ✅ Strip legacy fields (bundleName, price, duration) that may
+      //    still be present in formData after hydration from the API.
+      const {
+        bundleName: _bundleName,
+        price: _price,
+        duration: _duration,
+        ...cleanFormData
+      } = formData;
+
       const payload = {
-        ...formData,
+        ...cleanFormData,
+        goalCategory: asId(formData.goalCategory),
+        goal: asId(formData.goal),
+        semester: semesterId,
+        subject: asId(formData.subject),
+        subSubject: asId(formData.subSubject),
+        chapter: asId(formData.chapter),
+        topic: asId(formData.topic),
         subjects: formSubjects,
         handWrittenNotesPdf: finalPdfs,
         ...(deletedPdfs.length && { deletedPdfs }),
       };
+
+      console.log("📤 UPDATE PAYLOAD:", JSON.stringify(payload, null, 2));
 
       const addFun = () => {
         reset();
@@ -345,62 +568,96 @@ const EditHandwrittenNotes = () => {
               <label>
                 Goal Category <span className="req">*</span>
               </label>
-              <select
-                {...register("goalCategory", { required: true })}
-                className="ehw-input"
-              >
-                <option value="">Select Goal Category</option>
-                {data?.data?.map((item) => (
-                  <option key={item._id} value={item._id}>
-                    {item.name}
-                  </option>
-                ))}
-              </select>
+              <Controller
+                name="goalCategory"
+                control={control}
+                rules={{ required: true }}
+                render={({ field }) => (
+                  <select
+                    {...field}
+                    key={`cat-${categoryList.length}-${categoryList
+                      .map((c) => c._id)
+                      .join(",")}`}
+                    className="ehw-input"
+                  >
+                    <option value="">Select Goal Category</option>
+                    {categoryList.map((item) => (
+                      <option key={item._id} value={item._id}>
+                        {item.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              />
             </div>
 
             <div className="ehw-field">
               <label>
                 Goal Exam <span className="req">*</span>
               </label>
-              <select
-                {...register("goal", { required: true })}
-                className="ehw-input"
-              >
-                <option value="">Select Goal Exam</option>
-                {allGoals?.data?.map((item) => (
-                  <option key={item._id} value={item._id}>
-                    {item.name}
-                  </option>
-                ))}
-              </select>
+              <Controller
+                name="goal"
+                control={control}
+                rules={{ required: true }}
+                render={({ field }) => (
+                  <select
+                    {...field}
+                    key={`goal-${goalList.length}-${goalList
+                      .map((g) => g._id)
+                      .join(",")}`}
+                    className="ehw-input"
+                  >
+                    <option value="">
+                      {!goalCategory
+                        ? "Select Goal Category first"
+                        : goalList.length === 0
+                        ? "No goal exams available"
+                        : "Select Goal Exam"}
+                    </option>
+                    {goalList.map((item) => (
+                      <option key={item._id} value={item._id}>
+                        {item.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              />
             </div>
           </div>
 
-          {/* ✅ Semester dropdown */}
           <div className="ehw-grid ehw-grid-2" style={{ marginTop: "1rem" }}>
             <div className="ehw-field">
               <label>
                 Semester <span className="req">*</span>
               </label>
-              <select
-                {...register("semester", { required: true })}
-                className="ehw-input"
-                disabled={!goalExamId}
-              >
-                <option value="">
-                  {!goalExamId
-                    ? "Select Goal Exam first"
-                    : semesters.length === 0
-                    ? "No semesters available"
-                    : "Select Semester"}
-                </option>
-                {semesters.map((sem) => (
-                  <option key={sem._id} value={sem._id}>
-                    Semester {sem.semesterNumber}
-                    {sem.durationYears ? ` (${sem.durationYears})` : ""}
-                  </option>
-                ))}
-              </select>
+              <Controller
+                name="semester"
+                control={control}
+                rules={{ required: true }}
+                render={({ field }) => (
+                  <select
+                    {...field}
+                    key={`sem-${semesters.length}-${semesters
+                      .map((s) => s._id)
+                      .join(",")}`}
+                    className="ehw-input"
+                  >
+                    <option value="">
+                      {!goalExamId
+                        ? "Select Goal Exam first"
+                        : semesters.length === 0
+                        ? "No semesters available"
+                        : "Select Semester"}
+                    </option>
+                    {semesters.map((sem) => (
+                      <option key={sem._id} value={sem._id}>
+                        Semester {sem.semesterNumber}
+                        {sem.durationYears ? ` (${sem.durationYears})` : ""}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              />
               <small className="ehw-help">
                 Required for filtering handwritten notes by semester.
               </small>
@@ -441,18 +698,6 @@ const EditHandwrittenNotes = () => {
 
             <div className="ehw-field">
               <label>
-                Bundle Name <span className="req">*</span>
-              </label>
-              <input
-                type="text"
-                placeholder="Enter bundle name"
-                {...register("bundleName", { required: true })}
-                className="ehw-input"
-              />
-            </div>
-
-            <div className="ehw-field">
-              <label>
                 Page Count <span className="req">*</span>
               </label>
               <input
@@ -487,43 +732,19 @@ const EditHandwrittenNotes = () => {
           </div>
         </section>
 
-        {/* ── Section: Pricing & Duration ───────────────── */}
+        {/* ── Section: Visibility ── */}
         <section className="ehw-section">
           <header className="ehw-section-head">
-            <h3>Pricing &amp; Duration</h3>
-            <p>Set the price and study duration.</p>
+            <h3>Visibility</h3>
+            <p>Control whether this bundle appears on the app.</p>
           </header>
 
           <div className="ehw-grid ehw-grid-2">
             <div className="ehw-field">
-              <label>
-                Price (₹) <span className="req">*</span>
-              </label>
-              <input
-                type="number"
-                placeholder="Enter price"
-                {...register("price", { required: true })}
-                className="ehw-input"
-              />
-            </div>
-
-            <div className="ehw-field">
-              <label>
-                Duration <span className="req">*</span>
-              </label>
-              <input
-                type="text"
-                placeholder="e.g. 12 hours"
-                {...register("duration", { required: true })}
-                className="ehw-input"
-              />
-            </div>
-
-            <div className="ehw-field">
               <label>Visibility</label>
               <select {...register("isUsed")} className="ehw-input" required>
-                <option value={false}>Show in Handwritten Notes</option>
-                <option value={true}>Hide from Handwritten Notes</option>
+                <option value="false">No — hide from users</option>
+                <option value="true">Yes — show to users</option>
               </select>
               <small className="ehw-help">
                 Controls whether this bundle appears on the app.
@@ -536,9 +757,7 @@ const EditHandwrittenNotes = () => {
         <section className="ehw-section">
           <header className="ehw-section-head">
             <h3>Handwritten Notes PDFs</h3>
-            <p>
-              Upload, replace, or remove the PDF files attached to this note.
-            </p>
+            <p>Upload, replace, or remove the PDF files attached to this note.</p>
           </header>
 
           {existingPdfs.length > 0 && (

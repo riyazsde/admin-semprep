@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import axios from "axios";
 import { GoArrowLeft } from "react-icons/go";
 import { SlCloudUpload } from "react-icons/sl";
@@ -11,6 +11,7 @@ import { uploadImage } from "../../services/otherFunction";
 import {
   getGoalCategory,
   getGoalExamByGoalCategory,
+  getAllSemstersCommon,
 } from "../../services/exportFunctions";
 
 const API_BASE_URL =
@@ -60,13 +61,31 @@ axios.interceptors.request.use(
 );
 
 /* =====================================================================
-   HELPER — Safely extract _id from a populated or raw value
+   HELPERS
    ===================================================================== */
 const extractId = (val) => {
   if (!val) return "";
   if (typeof val === "string") return val;
   if (typeof val === "object" && val._id) return val._id;
   return "";
+};
+
+const extractList = (res) => {
+  if (!res) return [];
+  if (Array.isArray(res)) return res;
+  if (Array.isArray(res.data)) return res.data;
+  if (Array.isArray(res.data?.data)) return res.data.data;
+  if (Array.isArray(res.data?.result)) return res.data.result;
+  if (Array.isArray(res.result)) return res.result;
+  return [];
+};
+
+const getSemesterLabel = (s) => {
+  if (!s) return "";
+  const num = s.semesterNumber ? `Semester ${s.semesterNumber}` : "Semester";
+  const year = s.durationYears ? ` • ${s.durationYears}` : "";
+  const goalName = s.goal?.name || "";
+  return goalName ? `${num} — ${goalName}${year}` : `${num}${year}`;
 };
 
 /* =====================================================================
@@ -106,16 +125,23 @@ const TestSeries = () => {
     watch,
     reset,
     setValue,
+    control,
     formState: { errors },
   } = useForm();
 
   /* ---------- DROPDOWN STATE ---------- */
-  const [universities, setUniversities] = useState([]); // = Goal Categories
-  const [courses, setCourses] = useState([]);           // = Goals
+  const [universities, setUniversities] = useState([]); // Goal Categories
+  const [courses, setCourses] = useState([]);           // Goals
+  const [semesters, setSemesters] = useState([]);       // Semesters for goal
 
   const [image, setImage] = useState(null);
   const [tileImageUrl, setTileImageUrl] = useState(null);
   const [uploading, setUploading] = useState(false);
+
+  /* Ref to skip the dependent-dropdown effect when openEdit has already
+     set the university/course programmatically (so we don't re-fetch/wipe) */
+  const skipCourseFetchRef = useRef(null);
+  const skipSemesterFetchRef = useRef(null);
 
   /* =====================================================================
      INITIAL AUTH CHECK
@@ -174,22 +200,60 @@ const TestSeries = () => {
      ===================================================================== */
   const university = watch("university");
   useEffect(() => {
-    if (university) {
-      getGoalExamByGoalCategory({
-        setIsLoading: () => {},
-        setData: setCourses,
-        params: {
-          page: 1,
-          limit: 100,
-          search: "",
-          goalCategoryId: university,
-        },
-      });
-    } else {
+    if (!university) {
       setCourses([]);
+      setSemesters([]);
+      return;
     }
+
+    if (skipCourseFetchRef.current === university) {
+      skipCourseFetchRef.current = null;
+      return;
+    }
+
+    getGoalExamByGoalCategory({
+      setIsLoading: () => {},
+      setData: setCourses,
+      params: {
+        page: 1,
+        limit: 100,
+        search: "",
+        goalCategoryId: university,
+      },
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [university]);
+
+  /* =====================================================================
+     DEPENDENT DROPDOWN: Course (Goal) → Semesters
+     ===================================================================== */
+  const course = watch("course");
+  useEffect(() => {
+    if (!course) {
+      setSemesters([]);
+      return;
+    }
+
+    if (skipSemesterFetchRef.current === course) {
+      skipSemesterFetchRef.current = null;
+      return;
+    }
+
+    getAllSemstersCommon({
+      setIsLoading: () => {},
+      setData: (res) => {
+        const list = extractList(res);
+        setSemesters(list);
+      },
+      params: {
+        page: 1,
+        limit: 100,
+        search: "",
+        goalId: course,
+      },
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [course]);
 
   /* =====================================================================
      MODAL OPEN / CLOSE
@@ -199,6 +263,9 @@ const TestSeries = () => {
     setImage(null);
     setTileImageUrl(null);
     setCourses([]);
+    setSemesters([]);
+    skipCourseFetchRef.current = null;
+    skipSemesterFetchRef.current = null;
     setModalMode("create");
     setEditingId(null);
     setModalOpen(true);
@@ -210,29 +277,16 @@ const TestSeries = () => {
     setEditingId(series._id);
     setModalOpen(true);
 
-    /* ---------- Extract IDs (prefer goalCategory/goal, fall back to
-                  university/universityCourse — they mean the same thing) ---------- */
+    /* ---------- Extract IDs ---------- */
     const universityId =
       extractId(series.goalCategory) || extractId(series.university);
     const courseId =
       extractId(series.goal) || extractId(series.universityCourse);
+    const semesterId = extractId(series.semester);
 
-    /* ---------- Set text/number fields ---------- */
-    setValue("bundleName", series.bundleName || "");
-    setValue("bundleDescription", series.bundleDescription || "");
-    setValue("bundleCost", series.bundleCost ?? "");
-    setValue("bundleDuration", series.bundleDuration || "");
-    setValue("testCount", series.testCount ?? "");
-    setValue("freeTestsCount", series.freeTestsCount ?? "");
-    setValue("locale", series.locale || "");
-    setValue("isUsed", String(series.isUsed ?? false));
-
-    /* ---------- Set the 2 visible ID fields ---------- */
-    setValue("university", universityId);
-    setValue("course", courseId);
-
-    /* ---------- Preload courses dropdown so the selected option shows ---------- */
+    /* ---------- 1. Load courses for the selected university ---------- */
     if (universityId) {
+      skipCourseFetchRef.current = universityId;
       try {
         await getGoalExamByGoalCategory({
           setIsLoading: () => {},
@@ -247,7 +301,43 @@ const TestSeries = () => {
       } catch (e) {
         console.warn("Failed to preload courses:", e);
       }
+    } else {
+      setCourses([]);
     }
+
+    /* ---------- 2. Load semesters for the selected course ---------- */
+    if (courseId) {
+      skipSemesterFetchRef.current = courseId;
+      try {
+        await getAllSemstersCommon({
+          setIsLoading: () => {},
+          setData: (res) => {
+            const list = extractList(res);
+            setSemesters(list);
+          },
+          params: {
+            page: 1,
+            limit: 100,
+            search: "",
+            goalId: courseId,
+          },
+        });
+      } catch (e) {
+        console.warn("Failed to preload semesters:", e);
+      }
+    } else {
+      setSemesters([]);
+    }
+
+    /* ---------- 3. Set all form fields ---------- */
+    setValue("bundleDescription", series.bundleDescription || "");
+    setValue("freeTestsCount", series.freeTestsCount ?? "");
+    setValue("locale", series.locale || "");
+    setValue("isUsed", String(series.isUsed ?? false));
+
+    setValue("university", universityId, { shouldValidate: true });
+    setValue("course", courseId, { shouldValidate: true });
+    setValue("semester", semesterId, { shouldValidate: true });
 
     /* ---------- Image ---------- */
     if (series.tileImage) {
@@ -267,6 +357,9 @@ const TestSeries = () => {
     setTileImageUrl(null);
     setEditingId(null);
     setCourses([]);
+    setSemesters([]);
+    skipCourseFetchRef.current = null;
+    skipSemesterFetchRef.current = null;
   };
 
   /* =====================================================================
@@ -294,7 +387,7 @@ const TestSeries = () => {
   };
 
   /* =====================================================================
-     SUBMIT — SEND THE SAME IDS TO BOTH PAIRS OF FIELDS
+     SUBMIT
      ===================================================================== */
   const onSubmit = async (formValues) => {
     setSaving(true);
@@ -302,32 +395,22 @@ const TestSeries = () => {
     try {
       const selectedUniversity = formValues.university || null;
       const selectedCourse = formValues.course || null;
+      const selectedSemester = formValues.semester || null;
 
       const payload = {
-        bundleName: formValues.bundleName,
-        bundleDescription: formValues.bundleDescription,
-        bundleCost: Number(formValues.bundleCost) || 0,
-        bundleDuration: formValues.bundleDuration || "",
-        testCount: Number(formValues.testCount) || 0,
-        freeTestsCount: Number(formValues.freeTestsCount) || 0,
+        goalCategory: selectedUniversity,
+        goal: selectedCourse,
+        university: selectedUniversity,
+        universityCourse: selectedCourse,
+        semester: selectedSemester,
+
+        tileImage: tileImageUrl || undefined,
         locale: formValues.locale || "",
+        freeTestsCount: Number(formValues.freeTestsCount) || 0,
+        bundleDescription: formValues.bundleDescription || "",
         isUsed:
           formValues.isUsed === "true" || formValues.isUsed === true,
-
-        // ✅ Send SAME value to BOTH pairs so backend is happy either way
-        goalCategory: selectedUniversity,
-        university: selectedUniversity,
-        goal: selectedCourse,
-        universityCourse: selectedCourse,
-
-        // semester not used in this UI — omit or send null
-        semester: null,
       };
-
-      /* Only send tileImage if it has a value (avoid wiping it) */
-      if (tileImageUrl) {
-        payload.tileImage = tileImageUrl;
-      }
 
       /* CREATE: backend requires `tests` array → send []
          EDIT:   preserve existing tests → omit `tests` key */
@@ -858,7 +941,7 @@ const TestSeries = () => {
             <input
               type="text"
               className="ts-search"
-              placeholder="Search by bundle name…"
+              placeholder="Search by description…"
               value={search}
               onChange={(e) => {
                 setPage(1);
@@ -880,9 +963,9 @@ const TestSeries = () => {
                 <thead>
                   <tr>
                     <th style={{ width: 80 }}>Image</th>
-                    <th>Bundle</th>
+                    <th>Description</th>
+                    <th>Free Tests</th>
                     <th>Tests</th>
-                    <th>Cost</th>
                     <th>Locale</th>
                     <th>Status</th>
                     <th style={{ width: 100, textAlign: "right" }}>
@@ -906,18 +989,24 @@ const TestSeries = () => {
                       </td>
                       <td>
                         <span className="ts-td-name">
-                          {s.bundleName || "Untitled"}
+                          {s.bundleDescription || "Untitled"}
                         </span>
                         <span className="ts-td-sub">
-                          {s.bundleDescription || "No description"}
+                          {s.semester?.semesterNumber
+                            ? `Semester ${s.semester.semesterNumber}`
+                            : s.goal?.name || s.goalCategory?.name || ""}
                         </span>
                       </td>
                       <td>
                         <span className="ts-badge ts-badge-blue">
-                          {s.testCount ?? 0}
+                          {s.freeTestsCount ?? 0}
                         </span>
                       </td>
-                      <td>₹{s.bundleCost ?? 0}</td>
+                      <td>
+                        <span className="ts-badge ts-badge-gray">
+                          {Array.isArray(s.tests) ? s.tests.length : 0}
+                        </span>
+                      </td>
                       <td>{s.locale || "—"}</td>
                       <td>
                         <span
@@ -1040,14 +1129,21 @@ const TestSeries = () => {
                     <label>
                       University <span>*</span>
                     </label>
-                    <select {...register("university", { required: true })}>
-                      <option value="">Select University</option>
-                      {universities?.data?.map((u) => (
-                        <option key={u._id} value={u._id}>
-                          {u.name}
-                        </option>
-                      ))}
-                    </select>
+                    <Controller
+                      name="university"
+                      control={control}
+                      rules={{ required: true }}
+                      render={({ field }) => (
+                        <select {...field}>
+                          <option value="">Select University</option>
+                          {universities?.data?.map((u) => (
+                            <option key={u._id} value={u._id}>
+                              {u.name}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    />
                     {errors.university && (
                       <span className="ts-field-error">
                         University is required
@@ -1060,14 +1156,21 @@ const TestSeries = () => {
                     <label>
                       Course <span>*</span>
                     </label>
-                    <select {...register("course", { required: true })}>
-                      <option value="">Select Course</option>
-                      {courses?.data?.map((c) => (
-                        <option key={c._id} value={c._id}>
-                          {c.name}
-                        </option>
-                      ))}
-                    </select>
+                    <Controller
+                      name="course"
+                      control={control}
+                      rules={{ required: true }}
+                      render={({ field }) => (
+                        <select {...field}>
+                          <option value="">Select Course</option>
+                          {courses?.data?.map((c) => (
+                            <option key={c._id} value={c._id}>
+                              {c.name}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    />
                     {errors.course && (
                       <span className="ts-field-error">
                         Course is required
@@ -1075,19 +1178,35 @@ const TestSeries = () => {
                     )}
                   </div>
 
-                  {/* ---------- BUNDLE NAME ---------- */}
+                  {/* ---------- SEMESTER (NEW) ---------- */}
                   <div className="ts-field">
                     <label>
-                      Bundle Name <span>*</span>
+                      Semester <span>*</span>
                     </label>
-                    <input
-                      type="text"
-                      placeholder="e.g. CDS Foundation 2025"
-                      {...register("bundleName", { required: true })}
+                    <Controller
+                      name="semester"
+                      control={control}
+                      rules={{ required: true }}
+                      render={({ field }) => (
+                        <select {...field}>
+                          <option value="">
+                            {!course
+                              ? "Select Course first"
+                              : semesters.length === 0
+                              ? "No semesters for this course"
+                              : "Select Semester"}
+                          </option>
+                          {semesters.map((s) => (
+                            <option key={s._id} value={s._id}>
+                              {getSemesterLabel(s)}
+                            </option>
+                          ))}
+                        </select>
+                      )}
                     />
-                    {errors.bundleName && (
+                    {errors.semester && (
                       <span className="ts-field-error">
-                        Bundle name is required
+                        Semester is required
                       </span>
                     )}
                   </div>
@@ -1125,43 +1244,6 @@ const TestSeries = () => {
                     )}
                   </div>
 
-                  {/* ---------- COST ---------- */}
-                  <div className="ts-field">
-                    <label>
-                      Cost of Bundle (₹) <span>*</span>
-                    </label>
-                    <input
-                      type="number"
-                      placeholder="0"
-                      {...register("bundleCost", { required: true })}
-                    />
-                    {errors.bundleCost && (
-                      <span className="ts-field-error">
-                        Cost is required
-                      </span>
-                    )}
-                  </div>
-
-                  {/* ---------- DURATION ---------- */}
-                  <div className="ts-field">
-                    <label>Bundle Duration</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. 6 months"
-                      {...register("bundleDuration")}
-                    />
-                  </div>
-
-                  {/* ---------- TOTAL TESTS ---------- */}
-                  <div className="ts-field">
-                    <label>Total Tests</label>
-                    <input
-                      type="number"
-                      placeholder="0"
-                      {...register("testCount")}
-                    />
-                  </div>
-
                   {/* ---------- FREE TESTS ---------- */}
                   <div className="ts-field">
                     <label>Free Tests</label>
@@ -1173,7 +1255,7 @@ const TestSeries = () => {
                   </div>
 
                   {/* ---------- IS USED ---------- */}
-                  <div className="ts-field ts-field-full">
+                  <div className="ts-field">
                     <label>Show In Test Series</label>
                     <select {...register("isUsed")}>
                       <option value="true">Yes</option>
@@ -1181,6 +1263,35 @@ const TestSeries = () => {
                     </select>
                   </div>
                 </div>
+
+                {modalMode === "create" && (
+                  <p
+                    style={{
+                      marginTop: 18,
+                      fontSize: 12.5,
+                      color: "#6b7280",
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    ℹ️ The series will be created with an empty{" "}
+                    <code>tests</code> array. Add individual tests from the
+                    series detail page.
+                  </p>
+                )}
+
+                {modalMode === "edit" && (
+                  <p
+                    style={{
+                      marginTop: 18,
+                      fontSize: 12.5,
+                      color: "#6b7280",
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    ℹ️ The existing <code>tests</code> list will be preserved.
+                    Editing tests is done from the series detail page.
+                  </p>
+                )}
               </div>
 
               <div className="ts-modal-footer">

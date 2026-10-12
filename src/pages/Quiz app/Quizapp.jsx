@@ -4,7 +4,7 @@ import { PiNotepadFill } from "react-icons/pi";
 import { Link } from "react-router-dom";
 import { FaNewspaper } from "react-icons/fa6";
 import { IoIosPlayCircle } from "react-icons/io";
-
+import { BiSolidBookContent } from "react-icons/bi";
 const Quizapp = () => {
   return (
     <>
@@ -19,12 +19,12 @@ const Quizapp = () => {
               <h6>Handwritten Notes</h6>
             </div>
           </Link>
-          <Link to={"/quizapp/test-series"} className="link">
-            <div className="dashboardcontent">
-              <FaNewspaper />
-              <h6>Test Series</h6>
-            </div>
-          </Link>
+            <Link to={"/dashboard/test-series"} className="link">
+                     <div className="dashboardcontent">
+                       <BiSolidBookContent />
+                       <h6>Test Series</h6>
+                     </div>
+                   </Link>
           {/* <Link to={"/quizapp/practice-questions"} className="link">
             <div className="dashboardcontent">
               <PiNotepadFill />

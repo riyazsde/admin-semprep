@@ -61,12 +61,12 @@ const Dashboard = () => {
             </div>
           </Link>
          
-          <Link to={"/dashboard/test-series"} className="link">
+          {/* <Link to={"/dashboard/test-series"} className="link">
             <div className="dashboardcontent">
               <BiSolidBookContent />
               <h6>Test Series</h6>
             </div>
-          </Link>
+          </Link> */}
         </div>
       </div>
     </>

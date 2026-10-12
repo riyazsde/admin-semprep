@@ -23,6 +23,37 @@ import {
 import HandwrittenNotesFormComponent from "../../services/HandwrittenNotesFormComponent";
 
 // ─────────────────────────────────────────────────────────────
+// ✅ FIX: URL helpers to prevent broken ImgBB "viewer page" links
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Returns true only if the URL is a DIRECT image link
+ * (ends with .png/.jpg/.jpeg/.webp/.gif/.svg — optionally with query string).
+ */
+const isValidDirectImageUrl = (url) => {
+  if (!url || typeof url !== "string") return false;
+  return /^https?:\/\/.+\.(png|jpe?g|webp|gif|svg)(\?.*)?$/i.test(url.trim());
+};
+
+/**
+ * Detects the classic ImgBB "viewer page" link (https://ibb.co/XXXXX)
+ * which is NOT a direct image and would show broken in <img>.
+ */
+const isImgbbViewerLink = (url) => {
+  if (!url || typeof url !== "string") return false;
+  return /^https?:\/\/ibb\.co\//i.test(url.trim());
+};
+
+/**
+ * Best-effort: convert ImgBB viewer link → direct link host.
+ * NOTE: still requires the filename to actually load; used only as a hint.
+ */
+const toDirectImgbb = (url) => {
+  if (!url) return url;
+  return url.trim().replace(/^https?:\/\/ibb\.co\//i, "https://i.ibb.co/");
+};
+
+// ─────────────────────────────────────────────────────────────
 // Robust URL extractor for the upload response
 // ─────────────────────────────────────────────────────────────
 const extractUrl = (res) => {
@@ -82,7 +113,6 @@ const extractSemesters = (res) => {
   return [];
 };
 
-// Human-readable label for a semester object
 const getSemesterLabel = (s) => {
   if (!s) return "";
   const num = s.semesterNumber ? `Semester ${s.semesterNumber}` : "Semester";
@@ -93,16 +123,12 @@ const getSemesterLabel = (s) => {
   return meta ? `${num} — ${meta}${year}` : `${num}${year}`;
 };
 
-// ─────────────────────────────────────────────────────────────
-// Helpers to safely extract an ID out of many possible shapes
-// ─────────────────────────────────────────────────────────────
 const pickId = (v) => {
   if (!v) return "";
   if (typeof v === "string") return v;
   return v._id || v.id || "";
 };
 
-// Normalize subjects into the nested shape the API expects
 const normalizeSubjects = (formSubjects) => {
   if (!Array.isArray(formSubjects)) return [];
 
@@ -161,7 +187,6 @@ const normalizeSubjects = (formSubjects) => {
     .filter((s) => s.subject);
 };
 
-// Count every topic across the nested tree
 const countTopics = (subjects) =>
   subjects.reduce(
     (acc, s) =>
@@ -181,14 +206,20 @@ const countTopics = (subjects) =>
 const AddHandwrittenNote = () => {
   const navigate = useNavigate();
 
-  // ✅ Defaults matched to what WORKING notes in the user list use:
-  //    isUsed: false  (sample notes with isUsed:false DO appear on user side)
-  //    locale: "en"   (lowercase, matching the working sample notes)
-  const { register, handleSubmit, watch, reset, setValue } = useForm({
+  const {
+    register,
+    handleSubmit,
+    watch,
+    reset,
+    setValue,
+    formState: { errors },
+  } = useForm({
     defaultValues: {
       isUsed: "false",
       locale: "en",
       topicsCount: "",
+      image: "",
+      topperName: "",
     },
   });
 
@@ -211,7 +242,9 @@ const AddHandwrittenNote = () => {
   const [chapters, setChapters] = useState([]);
   const [topics, setTopics] = useState([]);
 
-  // ── Initial data loads ────────────────────────────────────
+  // ✅ live-watch the image URL field for validation + preview
+  const imageUrl = watch("image");
+
   useEffect(() => {
     getStudyPlannerPlans({ setIsLoading, setData: setStudyplannerStudyPlans });
     getGoalCategory({ setIsLoading, setData });
@@ -221,7 +254,6 @@ const AddHandwrittenNote = () => {
   const goalExamId = watch("goal");
   const semesterId = watch("semester");
 
-  // 👇 Load goal exams + semesters whenever university changes
   useEffect(() => {
     if (!goalCategory) {
       setAllGoals([]);
@@ -254,7 +286,6 @@ const AddHandwrittenNote = () => {
     });
   }, [goalCategory]);
 
-  // 👇 Client-side filter: keep semesters matching selected uni + goal
   const semesters = useMemo(() => {
     if (!allSemesters?.length) return [];
 
@@ -273,7 +304,6 @@ const AddHandwrittenNote = () => {
       .sort((a, b) => (a.semesterNumber || 0) - (b.semesterNumber || 0));
   }, [allSemesters, goalCategory, goalExamId]);
 
-  // Clear selected semester if it's no longer valid
   useEffect(() => {
     if (!semesterId) return;
     const stillValid = semesters.some((s) => s._id === semesterId);
@@ -394,7 +424,7 @@ const AddHandwrittenNote = () => {
       }
 
       setUploadedFileUrl(fileUrl);
-      setValue("image", fileUrl, { shouldValidate: true });
+      // NOTE: do NOT setValue("image", fileUrl) — `image` is the tile image URL.
 
       if (toastId) toast.success("File uploaded successfully", { id: toastId });
       else if (!silent) toast.success("File uploaded successfully");
@@ -416,8 +446,8 @@ const AddHandwrittenNote = () => {
 
   // ── Submit ────────────────────────────────────────────────
   const onSubmit = async (formData) => {
+    // 1. Upload PDF if pending
     let fileUrl = uploadedFileUrl;
-
     if (notesFile && !fileUrl) {
       try {
         fileUrl = await handleFileUpload();
@@ -426,30 +456,57 @@ const AddHandwrittenNote = () => {
       }
     }
 
-    // ✅ Require the notes PDF
+    // 2. PDF required
     if (!fileUrl) {
       toast.error("Please upload a notes file before saving.");
       return;
     }
 
+    // 3. ✅ Subject(s) required
     if (!formSubjects || formSubjects.length === 0) {
       toast.error("Please add at least one subject before saving.");
       return;
     }
+    const hasValidSubject = formSubjects.some(
+      (s) => pickId(s?.subject) || pickId(s?.subjectId) || pickId(s)
+    );
+    if (!hasValidSubject) {
+      toast.error("Please select a valid subject.");
+      return;
+    }
 
+    // 4. Semester required
     if (!formData.semester) {
       toast.error("Please select a semester.");
       return;
     }
 
+    // 5. Image URL validation
+    const rawImage = (formData.image || "").trim();
+    if (rawImage) {
+      if (isImgbbViewerLink(rawImage)) {
+        toast.error(
+          "That's the ImgBB page link. Please paste the DIRECT link " +
+            "(starts with https://i.ibb.co/ and ends with .png / .jpg)."
+        );
+        return;
+      }
+      if (!isValidDirectImageUrl(rawImage)) {
+        toast.error(
+          "Tile Image URL must be a direct image link ending with " +
+            ".png, .jpg, .jpeg, .webp, .gif or .svg"
+        );
+        return;
+      }
+    }
+
+    // 6. Normalize subjects
     const isUsedBool =
       formData.isUsed === "true" ||
       formData.isUsed === true ||
       formData.isUsed === "Yes";
 
-    // ✅ Convert whatever shape the child gave us into the nested API shape
     const normalizedSubjects = normalizeSubjects(formSubjects);
-
     if (normalizedSubjects.length === 0) {
       toast.error(
         "Subjects were provided but none had a valid subject id. Please re-select."
@@ -457,27 +514,21 @@ const AddHandwrittenNote = () => {
       return;
     }
 
-    // ✅ Auto-derive topicsCount if blank
+    // 7. Build payload
     const derivedTopics = countTopics(normalizedSubjects);
     const explicitTopics = Number(formData.topicsCount) || 0;
 
-    // ✅ Minimal payload — matches exactly what the working sample notes
-    //    in the user list have. No isActive / status / isPublished fields
-    //    (those may trigger strict-schema rejection).
     const payload = {
       topperName: formData.topperName || "",
-      bundleName: formData.bundleName,
       desc: formData.desc || "",
       pagesCount: Number(formData.pagesCount),
-      duration: formData.duration,
       topicsCount: explicitTopics || derivedTopics,
-      price: Number(formData.price),
-      locale: formData.locale || "en",   // ✅ lowercase to match sample notes
+      locale: formData.locale || "en",
       isUsed: isUsedBool,
       goalCategory: formData.goalCategory,
       goal: formData.goal,
       semester: formData.semester,
-      image: formData.image || "",
+      image: rawImage,
       handWrittenNotesPdf: [fileUrl],
       subjects: normalizedSubjects,
     };
@@ -487,6 +538,7 @@ const AddHandwrittenNote = () => {
       JSON.stringify(payload, null, 2)
     );
 
+    // 8. Save
     const addFun = () => {
       reset();
       setNotesFile(null);
@@ -510,6 +562,31 @@ const AddHandwrittenNote = () => {
       toast.error(msg, { id: toastId });
     }
   };
+
+  // ── Live validation hint for the Tile Image URL field ────
+  const imageHint = useMemo(() => {
+    if (!imageUrl) {
+      return {
+        type: "info",
+        text: "Paste the DIRECT link from ImgBB (starts with i.ibb.co and ends with .png / .jpg).",
+      };
+    }
+    if (isImgbbViewerLink(imageUrl)) {
+      return {
+        type: "error",
+        text:
+          "This is the ImgBB viewer page link. Copy the 'Direct link' instead " +
+          `(example: ${toDirectImgbb(imageUrl)}/your-file-name.png).`,
+      };
+    }
+    if (!isValidDirectImageUrl(imageUrl)) {
+      return {
+        type: "error",
+        text: "URL must end with .png, .jpg, .jpeg, .webp, .gif or .svg",
+      };
+    }
+    return { type: "ok", text: "Looks good ✓" };
+  }, [imageUrl]);
 
   // ── Render ────────────────────────────────────────────────
   return (
@@ -618,23 +695,13 @@ const AddHandwrittenNote = () => {
                 <p>Public information shown to students.</p>
               </header>
 
-              <div className="ahw-grid ahw-grid-2">
+              <div className="ahw-grid ahw-grid-1">
                 <div className="ahw-field">
                   <label>Topper's Name</label>
                   <input
                     type="text"
                     placeholder="e.g. Ananya Sharma"
                     {...register("topperName")}
-                  />
-                </div>
-                <div className="ahw-field">
-                  <label>
-                    Bundle Name <span className="ahw-req">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Complete Modern History Notes"
-                    {...register("bundleName", { required: true })}
                   />
                 </div>
               </div>
@@ -660,13 +727,49 @@ const AddHandwrittenNote = () => {
                     {...register("topicsCount")}
                   />
                 </div>
+
+                {/* Tile Image URL field with inline validation */}
                 <div className="ahw-field">
                   <label>Tile Image URL (optional)</label>
                   <input
                     type="text"
-                    placeholder="https://… (thumbnail shown in listing)"
+                    placeholder="https://i.ibb.co/xxxx/thumbnail.png"
                     {...register("image")}
                   />
+
+                  {imageHint.type === "error" && (
+                    <small style={{ color: "#dc3545", fontSize: 12 }}>
+                      ⚠️ {imageHint.text}
+                    </small>
+                  )}
+                  {imageHint.type === "info" && (
+                    <small style={{ color: "#6c757d", fontSize: 12 }}>
+                      {imageHint.text}
+                    </small>
+                  )}
+                  {imageHint.type === "ok" && (
+                    <small style={{ color: "#198754", fontSize: 12 }}>
+                      {imageHint.text}
+                    </small>
+                  )}
+
+                  {imageUrl && isValidDirectImageUrl(imageUrl) && (
+                    <img
+                      src={imageUrl}
+                      alt="Tile preview"
+                      style={{
+                        marginTop: 8,
+                        width: 160,
+                        height: 100,
+                        objectFit: "cover",
+                        borderRadius: 8,
+                        border: "1px solid #dee2e6",
+                      }}
+                      onError={(e) => {
+                        e.currentTarget.style.display = "none";
+                      }}
+                    />
+                  )}
                 </div>
               </div>
             </section>
@@ -720,7 +823,6 @@ const AddHandwrittenNote = () => {
                       onClick={() => {
                         setUploadedFileUrl("");
                         setNotesFile(null);
-                        setValue("image", "");
                         toast("File removed", { icon: "🗑️" });
                       }}
                       aria-label="Remove file"
@@ -732,35 +834,14 @@ const AddHandwrittenNote = () => {
               </div>
             </section>
 
-            {/* ── Section 4: Pricing & Visibility ───────── */}
+            {/* ── Section 4: Visibility ─────────────────── */}
             <section className="ahw-section">
               <header className="ahw-section-head">
-                <h3>Pricing &amp; Visibility</h3>
-                <p>Set the price, duration and listing status.</p>
+                <h3>Visibility</h3>
+                <p>Set the locale and listing status.</p>
               </header>
 
-              <div className="ahw-grid ahw-grid-4">
-                <div className="ahw-field">
-                  <label>
-                    Price (₹) <span className="ahw-req">*</span>
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    placeholder="e.g. 199"
-                    {...register("price", { required: true })}
-                  />
-                </div>
-                <div className="ahw-field">
-                  <label>
-                    Duration <span className="ahw-req">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. 6 months"
-                    {...register("duration", { required: true })}
-                  />
-                </div>
+              <div className="ahw-grid ahw-grid-2">
                 <div className="ahw-field">
                   <label>Locale</label>
                   <select {...register("locale")}>
