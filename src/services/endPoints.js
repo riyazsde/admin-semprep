@@ -197,7 +197,7 @@ export const endpoints = {
 
   updateBannerByPosition: (id) => `/admin/Banner/updateBanner/${id}`,
 
-  getBannerByPosition: "/admin/Banner/bannerByPosition",
+  getBannerByPosition: "/admin/Banner/bannerByPosition?type=HandwrittenNotes&position=TOP",
   addBannerByPosition: "/admin/Banner/AddBanner",
 
   getAllTutorialVideos: "/admin/Banner/allBanner",
