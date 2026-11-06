@@ -78,7 +78,6 @@ const TestSeriesData = () => {
                 <tr>
                   <th>Goal Category</th>
                   <th>Goal Exam</th>
-                  <th>Bundle Name</th>
                   <th>Bundle Description</th>
                   <th>Tile Image</th>
                   <th>Test Count</th>
@@ -91,7 +90,6 @@ const TestSeriesData = () => {
                   <tr key={index}>
                     <td>{data.goalCategory?.name}</td>
                     <td>{data.goal?.name}</td>
-                    <td>{data?.bundleName}</td>
                     <td>{data?.bundleDescription}</td>
                     <td>
                       {data?.tileImage ? (

@@ -196,13 +196,11 @@ const HandwrittenNotes = () => {
                     [
                       "Goal Category",
                       "Goal",
-                      "Bundle Name",
                       "Toppers Name",
                     ],
                     data?.data?.map((item) => [
                       item?.goalCategory?.name,
                       item?.goal?.name,
-                      item?.bundleName,
                       item?.topperName,
                     ]),
                     `students-${currentPage}.csv`
@@ -220,7 +218,6 @@ const HandwrittenNotes = () => {
                 <tr>
                   <th>Goal Category</th>
                   <th>Goal Exam</th>
-                  <th>Bundle Name</th>
                   <th>Toppers Name</th>
                   <th>Tile Image</th>
 
@@ -232,7 +229,6 @@ const HandwrittenNotes = () => {
                   <tr key={index}>
                     <td>{data.goalCategory?.name}</td>
                     <td>{data.goal?.name}</td>
-                    <td>{data?.bundleName}</td>
                     <td>{data?.topperName}</td>
                     <td>
                       {data?.image ? (

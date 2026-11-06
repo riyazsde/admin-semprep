@@ -103,6 +103,8 @@ export const endpoints = {
   addVideo: "/admin/videos",
   updateVideo: (id) => `/admin/videos/${id}`,
   deleteVideo: (id) => `/admin/videos/${id}`,
+  generateVideoSummary: (id) => `/admin/videos/${id}/generate-summary`,
+  generateVideoQuestions: (id) => `/admin/videos/${id}/generate-questions`,
 
   getAllStudents: "/admin/profile",
   getStudentById: (id) => `/admin/profile/${id}`,

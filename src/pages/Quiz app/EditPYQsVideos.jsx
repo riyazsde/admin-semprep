@@ -145,6 +145,7 @@ const EditPYQsVideos = () => {
       ...data,
       tests: formData,
     };
+    delete payload.bundleName;
     if (tileImageUrl) payload.tileImage = tileImageUrl;
     editPYQ({
       data: payload,
@@ -341,16 +342,6 @@ const EditPYQsVideos = () => {
                           <div className="input-container">
                             <input type="text" {...register("locale")} />
                             <label htmlFor="">Enter Language here</label>
-                          </div>
-                          <div className="addhandwritten-inputs-icons"></div>
-                        </div>
-                      </div>
-                      <div className="addhandwritten-input">
-                        <h6>Bundle Name</h6>
-                        <div className="addhandwritten-inputs-div">
-                          <div className="input-container">
-                            <input type="text" {...register("bundleName")} />
-                            <label htmlFor="">Enter Name here</label>
                           </div>
                           <div className="addhandwritten-inputs-icons"></div>
                         </div>

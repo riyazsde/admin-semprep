@@ -13,11 +13,13 @@ import {
   getAllSubjects,
   getAllSubjectsByGoalExam,
   getAllSubSubjects,
+  getAllSemstersCommon,
   getGoalCategory,
   getGoalExamByGoalCategory,
   getTopicsByChapter,
 } from "../../services/exportFunctions";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import HOC from "../../components/HOC/HOC";
 import TestFormComponent from "../../services/TestSeriesFormComponent";
 import { uploadImage } from "../../services/otherFunction";
@@ -28,7 +30,9 @@ const AddPYQsvideos = () => {
   const [show, setShow] = useState(false);
   const [show1, setShow1] = useState(false);
   const toggle = () => setShow(!show);
-  const { register, handleSubmit, watch, reset } = useForm();
+  const { register, handleSubmit, watch, reset, setValue } = useForm({
+    defaultValues: { locale: "English" },
+  });
   const [data, setData] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [goalExam, setGoalExam] = useState([]);
@@ -42,6 +46,7 @@ const AddPYQsvideos = () => {
   const [mockTestInstructionFile, setMockTestInstructionFile] = useState(null);
   const [mockTestTestSeriesFile, setMockTestTestSeriesFile] = useState(null);
   const [formData, setFormData] = useState([]);
+  const [semesters, setSemesters] = useState([]);
   const [tileImageUrl, setTileImageUrl] = useState(null);
 
   const handleImageChange = async (event) => {
@@ -91,6 +96,10 @@ const AddPYQsvideos = () => {
   // Fetch goal exams based on selected category
   useEffect(() => {
     if (goalCategory) {
+      setValue("goal", "");
+      setValue("semester", "");
+      setSemesters([]);
+      setFormData([]);
       const params = {
         page: 1,
         limit: 100,
@@ -98,8 +107,14 @@ const AddPYQsvideos = () => {
         goalCategoryId: goalCategory,
       };
       getGoalExamByGoalCategory({ setIsLoading, setData: setAllGoals, params });
+    } else {
+      setAllGoals([]);
+      setSemesters([]);
+      setFormData([]);
+      setValue("goal", "");
+      setValue("semester", "");
     }
-  }, [goalCategory]);
+  }, [goalCategory, setValue]);
 
   // Fetch subjects based on selected goal exam
   const goalId = watch("goal");
@@ -107,8 +122,27 @@ const AddPYQsvideos = () => {
     if (goalId) {
       const params = { page: 1, limit: 100, search: "", goalId };
       getAllSubjects({ setIsLoading, setData: setSubject, params });
+      setValue("semester", "");
+      getAllSemstersCommon({
+        setIsLoading,
+        setData: (res) => {
+          const list = Array.isArray(res?.data)
+            ? res.data
+            : Array.isArray(res?.data?.data)
+            ? res.data.data
+            : Array.isArray(res)
+            ? res
+            : [];
+          setSemesters(list);
+        },
+        params: { page: 1, limit: 100, search: "", goalId },
+      });
+    } else {
+      setSemesters([]);
+      setFormData([]);
+      setValue("semester", "");
     }
-  }, [goalId]);
+  }, [goalId, setValue]);
 
   // Fetch sub-subjects based on selected subject
   const subjectId = watch("subject");
@@ -140,16 +174,63 @@ const AddPYQsvideos = () => {
   }, [chapterId]);
 
   // Handle form submission
-  const onSubmit = (data) => {
+  const onSubmit = async (data) => {
+    const tests = (Array.isArray(formData) ? formData : [])
+      .filter((test) => test.subject)
+      .map((test, index) => ({
+        testName:
+          test.testName?.trim() ||
+          `Test ${index + 1}`,
+        testType: test.testType || "Subject Test",
+        testCost: test.testCost || "Free",
+        subject: test.subject,
+        testSeriesFiles: Array.isArray(test.testSeriesFiles)
+          ? test.testSeriesFiles
+          : [],
+        videos: Array.isArray(test.videos) ? test.videos : [],
+      }));
+
+    if (!data.semester) {
+      toast.error("Please select a semester.");
+      return;
+    }
+    if (!data.bundleDescription?.trim()) {
+      toast.error("Enter a bundle description.");
+      return;
+    }
+    if (tests.length === 0) {
+      toast.error("Please add at least one test with a subject.");
+      return;
+    }
+    if (
+      tests.some((test) =>
+        test.testSeriesFiles.length === 0 ||
+        test.testSeriesFiles.some(
+          (file) => !file?.instructionFile || !file?.testSeriesFile
+        )
+      )
+    ) {
+      toast.error("Upload both instruction and test files for every test.");
+      return;
+    }
+
     const payload = {
-      ...data,
-      tests: formData,
+      semester: data.semester,
+      bundleDescription: data.bundleDescription || "",
+      locale: data.locale || "English",
+      testCount: tests.length,
+      freeTestsCount: tests.filter((test) => test.testCost === "Free").length,
+      tests,
     };
     if (tileImageUrl) payload.tileImage = tileImageUrl;
-    addPYQ({
-      data: payload,
-      addFun: () => navigate("/quizapp/pyqs-videos"),
-    });
+    try {
+      await addPYQ({
+        data: payload,
+        addFun: () => navigate("/quizapp/pyqs-videos"),
+      });
+    } catch (error) {
+      console.error("Failed to save previous-year questions:", error);
+    }
   };
   return (
     <>
@@ -225,6 +306,36 @@ const AddPYQsvideos = () => {
                             {/* </div> */}
                           </div>
                         </div>
+                        <div className="testseries-input" style={{ gap: 12 }}>
+                          <h6>
+                            Semester <span>*</span>
+                          </h6>
+                          <div className="addhandwritten-inputs-div">
+                            <div className="input-container">
+                              <select
+                                {...register("semester", { required: true })}
+                              >
+                                <option value="">
+                                  {!goalId
+                                    ? "Select course first"
+                                    : semesters.length === 0
+                                    ? "No semesters for this course"
+                                    : "Select Semester"}
+                                </option>
+                                {semesters.map((semester) => (
+                                  <option
+                                    key={semester._id}
+                                    value={semester._id}
+                                  >
+                                    {semester.semesterNumber
+                                      ? `Semester ${semester.semesterNumber}`
+                                      : semester.name || "Semester"}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+                        </div>
                       </div>
 
                       <div className="addhandwritten-input" style={{gap:12}}>
@@ -285,7 +396,15 @@ const AddPYQsvideos = () => {
                         </h6>
                         <div className="addhandwritten-inputs-div">
                           <div className="input-container">
-                            <input type="text" {...register("testCount")} />
+                            <input
+                              type="number"
+                              value={
+                                (Array.isArray(formData) ? formData : []).filter(
+                                  (test) => test.subject
+                                ).length
+                              }
+                              readOnly
+                            />
                             {/* <label htmlFor="">Enter test count</label> */}
                           </div>
                           {/* <div className="addhandwritten-inputs-icons"></div> */}
@@ -334,16 +453,6 @@ const AddPYQsvideos = () => {
                           {/* <div className="addhandwritten-inputs-icons"></div> */}
                         </div>
                       </div>
-                      <div className="addhandwritten-input" style={{gap:12}}>
-                        <h6>Bundle Name</h6>
-                        <div className="addhandwritten-inputs-div">
-                          <div className="input-container">
-                            <input type="text" {...register("bundleName")} />
-                            {/* <label htmlFor="">Enter Name here</label> */}
-                          </div>
-                          {/* <div className="addhandwritten-inputs-icons"></div> */}
-                        </div>
-                      </div>
                       {/* <div className="addhandwritten-input" style={{gap:12}}>
                         <h6>
                           Free Tests<span>*</span>
@@ -368,6 +477,7 @@ const AddPYQsvideos = () => {
                 {show && (
                   <>
                     <TestSeriesFormComponentMain
+                      key={goalId}
                       goalCategory={goalCategory}
                       goalExamId={goalId}
                       setFormData={setFormData}

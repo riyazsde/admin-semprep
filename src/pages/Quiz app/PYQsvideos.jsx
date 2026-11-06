@@ -86,7 +86,6 @@ const PYQsvideos = () => {
                   <th>Course</th>
                   <th>Semester</th>
                   <th>Main Title</th>
-                  <th>Bundle Name</th>
                   <th>Bundle Description</th>
                   <th>Tile Image</th>
                   <th>Tests</th>
@@ -122,7 +121,6 @@ const PYQsvideos = () => {
                       <td>{courseName}</td>
                       <td>{semesterLabel}</td>
                       <td>{mainTitle}</td>
-                      <td>{row.bundleName || "—"}</td>
                       <td>{row.bundleDescription || "—"}</td>
                       <td>
                         {row.tileImage ? (

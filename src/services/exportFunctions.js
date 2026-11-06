@@ -8,7 +8,6 @@ import axios from "axios";
 import { endpoints } from "./endPoints";
 import api from "./api";
 import { showNotification } from "./exportComponents";
-import { toast } from "sonner"; // 
 const baseUrl = "https://prep-project-zej8.onrender.com";
 
 
@@ -785,6 +784,44 @@ export const addVideo = async ({ setIsLoading, data, addFun }) => {
     });
 };
 
+export const generateVideoSummary = async ({
+  id,
+  setIsLoading,
+  setData,
+  addFun,
+}) => {
+  const res = await postRequest({
+    endpoint: endpoints.generateVideoSummary(id),
+    setIsLoading,
+  });
+
+  if (res !== undefined) {
+    if (setData) setData(res);
+    if (addFun) addFun(res);
+  }
+
+  return res;
+};
+
+export const generateVideoQuestions = async ({
+  id,
+  setIsLoading,
+  setData,
+  addFun,
+}) => {
+  const res = await postRequest({
+    endpoint: endpoints.generateVideoQuestions(id),
+    setIsLoading,
+  });
+
+  if (res !== undefined) {
+    if (setData) setData(res);
+    if (addFun) addFun(res);
+  }
+
+  return res;
+};
+
 export const deleteVideo = async ({ id, addFun }) => {
   deleteRequest({
     endpoint: endpoints.deleteVideo(id),
@@ -869,25 +906,55 @@ export const deleteSkill = async ({ id, addFun }) => {
   });
 };
 
-export const addHandwrittenNote = async ({ setIsLoading, data, addFun }) => {
+// ─────────────────────────────────────────────────────────────
+// Upload handwritten notes file
+// ─────────────────────────────────────────────────────────────
+export const uploadHandwrittenNotesFile = async ({ file, setIsLoading }) => {
+  if (setIsLoading) setIsLoading(true);
   try {
-    const res = await postRequest({
-      endpoint: endpoints.addHandwrittenNote,
-      data,
-    });
-    if (res !== undefined && addFun) addFun();
-    return res;
-  } catch (err) {
-    console.error(err);
-    const msg =
-      err?.response?.data?.message ||
-      err?.message ||
-      "Failed to save handwritten note.";
-    toast.error(msg);
-    throw err;
+    const formData = new FormData();
+    formData.append("notes", file);
+
+    const token =
+      localStorage.getItem("token") ||
+      localStorage.getItem("authToken") ||
+      localStorage.getItem("accessToken") ||
+      localStorage.getItem("adminToken");
+
+    const response = await axios.post(
+      `${baseUrl}/api/v1/admin/handwritten-notes/upload`,
+      formData,
+      {
+        headers: {
+          "Content-Type": "multipart/form-data",
+          ...(token && { Authorization: `Bearer ${token}` }),
+        },
+      }
+    );
+
+    console.log("UPLOAD RESPONSE (raw):", response?.data);
+    return response.data;
+  } finally {
+    if (setIsLoading) setIsLoading(false);
   }
 };
 
+// ─────────────────────────────────────────────────────────────
+// Add handwritten note — throws on failure so caller can toast
+// ─────────────────────────────────────────────────────────────
+export const addHandwrittenNote = async ({ setIsLoading, data, addFun }) => {
+  if (setIsLoading) setIsLoading(true);
+  try {
+    const response = await api.post(endpoints.addHandwrittenNote, data);
+    if (addFun) addFun();
+    return response.data;
+  } catch (err) {
+    console.error("Error adding handwritten note:", err);
+    throw err;
+  } finally {
+    if (setIsLoading) setIsLoading(false);
+  }
+};
 // ─────────────────────────────────────────────────────────────
 // Upload handwritten notes file
 // Auth token is read from localStorage. If your apiService uses a
@@ -1324,50 +1391,25 @@ export const deletePYQ = async ({ id, addFun }) => {
     });
 };
 // ─────────────────────────────────────────────────────────────
-// Upload handwritten notes file
-// ─────────────────────────────────────────────────────────────
-export const uploadHandwrittenNotesFile = async ({ file, setIsLoading }) => {
-  if (setIsLoading) setIsLoading(true);
-  try {
-    const formData = new FormData();
-    formData.append("notes", file);
 
-    const token =
-      localStorage.getItem("token") ||
-      localStorage.getItem("authToken") ||
-      localStorage.getItem("accessToken") ||
-      localStorage.getItem("adminToken");
-
-    const response = await axios.post(
-      `${baseUrl}/api/v1/admin/handwritten-notes/upload`,
-      formData,
-      {
-        headers: {
-          "Content-Type": "multipart/form-data",
-          ...(token && { Authorization: `Bearer ${token}` }),
-        },
-      }
-    );
-
-    return response.data;
-  } finally {
-    if (setIsLoading) setIsLoading(false);
-  }
-};
 
 export const addPYQ = async ({ data, addFun }) => {
-  postRequest({
-    endpoint: endpoints.addPYQ,
-    data,
-  })
-    .then((res) => {
-      if (res !== undefined) {
-        if (addFun) addFun();
-      }
-    })
-    .catch((err) => {
-      console.log(err);
+  try {
+    const response = await api.post(endpoints.addPYQ, data);
+    showNotification({
+      type: "success",
+      message: response.data?.message || "Previous-year questions saved.",
     });
+    if (addFun) addFun(response.data);
+    return response.data;
+  } catch (error) {
+    const message =
+      error.response?.data?.message ||
+      error.message ||
+      "Failed to save previous-year questions.";
+    showNotification({ type: "error", message });
+    throw error;
+  }
 };
 
 export const getAllPayments = async ({ setIsLoading, setData, params }) => {

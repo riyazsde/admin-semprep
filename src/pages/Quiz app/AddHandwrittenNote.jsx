@@ -23,31 +23,18 @@ import {
 import HandwrittenNotesFormComponent from "../../services/HandwrittenNotesFormComponent";
 
 // ─────────────────────────────────────────────────────────────
-// ✅ FIX: URL helpers to prevent broken ImgBB "viewer page" links
+// URL helpers — prevent broken ImgBB "viewer page" links
 // ─────────────────────────────────────────────────────────────
-
-/**
- * Returns true only if the URL is a DIRECT image link
- * (ends with .png/.jpg/.jpeg/.webp/.gif/.svg — optionally with query string).
- */
 const isValidDirectImageUrl = (url) => {
   if (!url || typeof url !== "string") return false;
   return /^https?:\/\/.+\.(png|jpe?g|webp|gif|svg)(\?.*)?$/i.test(url.trim());
 };
 
-/**
- * Detects the classic ImgBB "viewer page" link (https://ibb.co/XXXXX)
- * which is NOT a direct image and would show broken in <img>.
- */
 const isImgbbViewerLink = (url) => {
   if (!url || typeof url !== "string") return false;
   return /^https?:\/\/ibb\.co\//i.test(url.trim());
 };
 
-/**
- * Best-effort: convert ImgBB viewer link → direct link host.
- * NOTE: still requires the filename to actually load; used only as a hint.
- */
 const toDirectImgbb = (url) => {
   if (!url) return url;
   return url.trim().replace(/^https?:\/\/ibb\.co\//i, "https://i.ibb.co/");
@@ -55,10 +42,11 @@ const toDirectImgbb = (url) => {
 
 // ─────────────────────────────────────────────────────────────
 // Robust URL extractor for the upload response
+// Handles: string, {url}, {fileUrl}, {data:{url}}, {data:[...]}, {files:[...]}, {data:{files:[...]}}
 // ─────────────────────────────────────────────────────────────
 const extractUrl = (res) => {
   if (!res) return "";
-  if (typeof res === "string") return res;
+  if (typeof res === "string") return res.trim();
 
   const pick = (obj) =>
     obj?.url ||
@@ -67,16 +55,22 @@ const extractUrl = (res) => {
     obj?.path ||
     obj?.secure_url ||
     obj?.location ||
+    obj?.pdfUrl ||
+    obj?.notesUrl ||
     "";
 
+  // 1. direct fields on the response
   const direct = pick(res);
   if (direct) return direct;
 
+  // 2. res.data could be a string, array, or object
   const d = res.data;
+
+  if (typeof d === "string" && d.trim()) return d.trim();
 
   if (Array.isArray(d) && d.length > 0) {
     const first = d[0];
-    if (typeof first === "string") return first;
+    if (typeof first === "string" && first.trim()) return first.trim();
     if (first && typeof first === "object") {
       const fromObj = pick(first);
       if (fromObj) return fromObj;
@@ -84,16 +78,35 @@ const extractUrl = (res) => {
   }
 
   if (d && typeof d === "object") {
+    // 2a. nested files array
     if (Array.isArray(d.files) && d.files.length > 0) {
       const first = d.files[0];
-      if (typeof first === "string") return first;
+      if (typeof first === "string" && first.trim()) return first.trim();
       if (first && typeof first === "object") {
         const fromObj = pick(first);
         if (fromObj) return fromObj;
       }
     }
+    // 2b. nested url fields
     const fromData = pick(d);
     if (fromData) return fromData;
+
+    // 2c. one more level: d.data.url / d.data.fileUrl
+    if (d.data) {
+      if (typeof d.data === "string" && d.data.trim()) return d.data.trim();
+      if (Array.isArray(d.data) && d.data.length > 0) {
+        const first = d.data[0];
+        if (typeof first === "string" && first.trim()) return first.trim();
+        if (first && typeof first === "object") {
+          const fromObj = pick(first);
+          if (fromObj) return fromObj;
+        }
+      }
+      if (d.data && typeof d.data === "object") {
+        const fromNested = pick(d.data);
+        if (fromNested) return fromNested;
+      }
+    }
   }
 
   return "";
@@ -129,6 +142,10 @@ const pickId = (v) => {
   return v._id || v.id || "";
 };
 
+// ─────────────────────────────────────────────────────────────
+// Normalize subjects — strips extra fields and sends only what API expects:
+// { subject, subSubjects: [{ subSubject, chapters: [{ chapter, topics: [{ topic, handwrittenNotes }] }] }] }
+// ─────────────────────────────────────────────────────────────
 const normalizeSubjects = (formSubjects) => {
   if (!Array.isArray(formSubjects)) return [];
 
@@ -168,12 +185,7 @@ const normalizeSubjects = (formSubjects) => {
               handwrittenNotes = [t.handwrittenNote];
             }
 
-            return {
-              topic: topicId,
-              name: t?.name || t?.topicName || "",
-              durationOfNotes: t?.durationOfNotes || t?.duration || "",
-              handwrittenNotes,
-            };
+            return { topic: topicId, handwrittenNotes };
           });
 
           return { chapter: chapterId, topics };
@@ -203,6 +215,12 @@ const countTopics = (subjects) =>
     0
   );
 
+// Sanitize accidental Postman placeholders in desc
+const sanitizeDesc = (desc) => {
+  if (!desc) return "";
+  return desc.replace(/\{\{\s*\$timestamp\s*\}\}/gi, Date.now().toString());
+};
+
 const AddHandwrittenNote = () => {
   const navigate = useNavigate();
 
@@ -216,7 +234,7 @@ const AddHandwrittenNote = () => {
   } = useForm({
     defaultValues: {
       isUsed: "false",
-      locale: "en",
+      locale: "English",
       topicsCount: "",
       image: "",
       topperName: "",
@@ -242,7 +260,6 @@ const AddHandwrittenNote = () => {
   const [chapters, setChapters] = useState([]);
   const [topics, setTopics] = useState([]);
 
-  // ✅ live-watch the image URL field for validation + preview
   const imageUrl = watch("image");
 
   useEffect(() => {
@@ -277,9 +294,7 @@ const AddHandwrittenNote = () => {
     getSemsterByUniversityId({
       setIsLoading,
       setData: (res) => {
-        console.log("SEMESTER RAW:", res);
         const list = extractSemesters(res);
-        console.log("SEMESTER PARSED COUNT:", list.length);
         setAllSemesters(list);
       },
       params: { page: 1, limit: 200 },
@@ -413,7 +428,9 @@ const AddHandwrittenNote = () => {
         setIsLoading: setIsUploading,
       });
 
+      console.log("UPLOAD RAW RESPONSE:", JSON.stringify(response, null, 2));
       const fileUrl = extractUrl(response);
+      console.log("EXTRACTED FILE URL:", fileUrl);
 
       if (!fileUrl) {
         const msg = "Upload succeeded but no URL was returned. Check console.";
@@ -424,7 +441,6 @@ const AddHandwrittenNote = () => {
       }
 
       setUploadedFileUrl(fileUrl);
-      // NOTE: do NOT setValue("image", fileUrl) — `image` is the tile image URL.
 
       if (toastId) toast.success("File uploaded successfully", { id: toastId });
       else if (!silent) toast.success("File uploaded successfully");
@@ -462,7 +478,7 @@ const AddHandwrittenNote = () => {
       return;
     }
 
-    // 3. ✅ Subject(s) required
+    // 3. Subject(s) required
     if (!formSubjects || formSubjects.length === 0) {
       toast.error("Please add at least one subject before saving.");
       return;
@@ -517,13 +533,14 @@ const AddHandwrittenNote = () => {
     // 7. Build payload
     const derivedTopics = countTopics(normalizedSubjects);
     const explicitTopics = Number(formData.topicsCount) || 0;
+    const finalTopicsCount = explicitTopics > 0 ? explicitTopics : derivedTopics;
 
     const payload = {
       topperName: formData.topperName || "",
-      desc: formData.desc || "",
-      pagesCount: Number(formData.pagesCount),
-      topicsCount: explicitTopics || derivedTopics,
-      locale: formData.locale || "en",
+      desc: sanitizeDesc(formData.desc || ""),
+      pagesCount: Number(formData.pagesCount) || 0,
+      topicsCount: finalTopicsCount,
+      locale: formData.locale || "English",
       isUsed: isUsedBool,
       goalCategory: formData.goalCategory,
       goal: formData.goal,
@@ -717,6 +734,11 @@ const AddHandwrittenNote = () => {
                     placeholder="e.g. 120"
                     {...register("pagesCount", { required: true })}
                   />
+                  {errors.pagesCount && (
+                    <small style={{ color: "#dc3545", fontSize: 12 }}>
+                      Page count is required.
+                    </small>
+                  )}
                 </div>
                 <div className="ahw-field">
                   <label>Topics Count</label>
@@ -832,6 +854,12 @@ const AddHandwrittenNote = () => {
                   </div>
                 )}
               </div>
+
+              {uploadedFileUrl && (
+                <small style={{ color: "#198754", fontSize: 12, wordBreak: "break-all" }}>
+                  URL: {uploadedFileUrl}
+                </small>
+              )}
             </section>
 
             {/* ── Section 4: Visibility ─────────────────── */}
@@ -845,8 +873,8 @@ const AddHandwrittenNote = () => {
                 <div className="ahw-field">
                   <label>Locale</label>
                   <select {...register("locale")}>
-                    <option value="en">en (English)</option>
-                    <option value="hi">hi (Hindi)</option>
+                    <option value="English">English</option>
+                    <option value="Hindi">Hindi</option>
                   </select>
                 </div>
                 <div className="ahw-field">

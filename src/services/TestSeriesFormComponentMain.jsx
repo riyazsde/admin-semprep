@@ -144,25 +144,29 @@ const TestSeriesFormComponentMain = ({
       return subjects.map((subject, index) => {
         const instructionFile = fileData[key][index]?.instructionFile || "";
         const testSeriesFile = fileData[key][index]?.testSeriesFile || "";
-  
-       
+
         return {
+          testName:
+            subject.testName?.trim() ||
+            `${
+              subjectOptions.find(
+                (option) => option._id === subject.subjectId
+              )?.name || "Test"
+            } ${index + 1}`,
           testType: testTypes[key],
           testCost: "Free",
           subject: subject.subjectId,
-          subSubject: subject.subSubjectId || undefined,
-          chapter: subject.chapterId,
-          topic: subject.topicId ? [subject.topicId] : [],
           testSeriesFiles: [
             {
               instructionFile,
               testSeriesFile,
             },
           ],
+          videos: [],
         };
       });
     });
-  
+
     console.log("Generated Output:", output); // Log the final output
     return output;
   };
@@ -216,6 +220,14 @@ const TestSeriesFormComponentMain = ({
       <>
         {fields.map((field, index) => (
           <div key={field.id}>
+            <h6 className="mt-2">Test Name</h6>
+            <div className="input-container mb-2">
+              <input
+                type="text"
+                placeholder="Enter test name"
+                {...register(`${testType}Subjects[${index}].testName`)}
+              />
+            </div>
             <div
               style={{ display: "grid", gridTemplateColumns: "1fr 1fr" }}
             >

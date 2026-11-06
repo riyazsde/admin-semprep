@@ -73,11 +73,10 @@ const AllHandwrittenNotes = () => {
               <div
                 onClick={() =>
                   generateCsv(
-                    ["Goal Category", "Goal", "Bundle Name", "Toppers Name"],
+                    ["Goal Category", "Goal", "Toppers Name"],
                     data?.data?.map((item) => [
                       item?.goalCategory?.name,
                       item?.goal?.name,
-                      item?.bundleName,
                       item?.topperName,
                     ]),
                     `HandwrittenNotes-${currentPage}.csv`
@@ -95,7 +94,6 @@ const AllHandwrittenNotes = () => {
                 <tr>
                   <th>Goal Category</th>
                   <th>Goal Exam</th>
-                  <th>Bundle Name</th>
                   <th>Toppers Name</th>
                   <th>Tile Image</th>
 
@@ -107,7 +105,6 @@ const AllHandwrittenNotes = () => {
                   <tr key={index}>
                     <td>{data.goalCategory?.name}</td>
                     <td>{data.goal?.name}</td>
-                    <td>{data?.bundleName}</td>
                     <td>{data?.topperName}</td>
                     <td>
                       {data?.image ? (
